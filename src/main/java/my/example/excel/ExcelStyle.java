@@ -32,7 +32,7 @@ public class ExcelStyle {
 	private final String cellFormat;
 
 	@Builder
-	public ExcelStyle(String styleName, boolean boldFont, Short backgroundColor, HorizontalAlignment align, List<ExcelBorder> borders,
+	public ExcelStyle(String styleName, Boolean boldFont, Short backgroundColor, HorizontalAlignment align, List<ExcelBorder> borders,
 	                  String cellFormat) {
 		Assert.notNull(styleName, "스타일 명을 지정 해 줘야 합니다.");
 		this.styleName = styleName;
