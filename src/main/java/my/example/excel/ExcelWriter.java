@@ -1,19 +1,23 @@
 package my.example.excel;
 
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import javax.servlet.ServletOutputStream;
+import javax.servlet.http.HttpServletResponse;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
@@ -41,7 +45,21 @@ public class ExcelWriter {
 		}
 	}
 
-	private void addRow(List<ExcelCell> excelCells) throws IOException {
+	public void write(OutputStream os) throws IOException {
+		this.workbook.write(os);
+	}
+
+	public void download(HttpServletResponse response) {
+		try (ServletOutputStream outputStream = response.getOutputStream()) {
+			response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+			response.setHeader("Content-Disposition", "attachment; filename=" + config.getFileName() + ".xlsx");
+			write(outputStream);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	private void addRow(List<ExcelCell> excelCells) {
 		Row row = this.currentSheet.createRow(this.currentRowNumber);
 		int columnNumber = 0;
 
@@ -64,7 +82,11 @@ public class ExcelWriter {
 		}
 
 		if (this.currentRowNumber!=0 && this.currentRowNumber%config.getChunkSize() == 0) {
-			currentSheet.flushRows();
+			try {
+				currentSheet.flushRows();
+			} catch (IOException e) {
+				throw new RuntimeException("SXSSF Flush 중에 에러가 발생했습니다: " + e.getMessage());
+			}
 		}
 
 		this.currentRowNumber++;
@@ -101,6 +123,8 @@ public class ExcelWriter {
 	private static void setCellValue(Cell cell, Object value) {
 		if (value instanceof Double) {
 			cell.setCellValue((Double) value);
+		} else if (value instanceof Long) {
+			cell.setCellValue((Long) value);
 		} else if (value instanceof Integer) {
 			cell.setCellValue((Integer) value);
 		} else {
@@ -132,40 +156,52 @@ public class ExcelWriter {
 		return new Builder(new ExcelWriter(config));
 	}
 
-	static class Builder {
+	public static class Builder {
 		private final ExcelWriter writer;
 
 		private Builder(ExcelWriter writer) {
 			this.writer = writer;
 		}
 
-		public Builder addRows(List<List<ExcelCell>> excelRows) throws IOException {
+		public Builder addRows(List<List<ExcelCell>> excelRows) {
 			for (List<ExcelCell> excelCells : excelRows) {
 				this.writer.addRow(excelCells);
 			}
 			return this;
 		}
 
-		public Builder addRows(Supplier<List<List<ExcelCell>>> contentSupplier) throws IOException {
+		public Builder addRows(Supplier<List<List<ExcelCell>>> contentSupplier) {
 			return this.addRows(contentSupplier.get());
 		}
 
-		public Builder add(List<Object> values, String style) throws IOException {
+		public <T> Builder addRows(T t, Function<T, List<List<ExcelCell>>> contentFunction) {
+			return this.addRows(contentFunction.apply(t));
+		}
+
+		public <T, R> Builder addRows(T t, R r, BiFunction<T, R, List<List<ExcelCell>>> contentFunction) {
+			return this.addRows(contentFunction.apply(t, r));
+		}
+
+		public Builder add(List<Object> values, String style) {
 			this.writer.addRow(values.stream().map(v -> new ExcelCell(v, style)).collect(Collectors.toList()));
 			return this;
 		}
 
-		public Builder add(Supplier<List<Object>> valueSupplier, String style) throws IOException {
+		public Builder add(Supplier<List<Object>> valueSupplier, String style) {
 			return this.add(valueSupplier.get(), style);
 		}
 
-		public Builder add(List<ExcelCell> excelCells) throws IOException {
+		public Builder add(List<ExcelCell> excelCells) {
 			this.writer.addRow(excelCells);
 			return this;
 		}
 
-		public Builder add(Supplier<List<ExcelCell>> contentSupplier) throws IOException {
+		public Builder add(Supplier<List<ExcelCell>> contentSupplier) {
 			return this.add(contentSupplier.get());
+		}
+
+		public <T> Builder add(T t, Function<T, List<ExcelCell>> contentFunction) {
+			return this.add(contentFunction.apply(t));
 		}
 
 		public Builder addGap(int rowSize) {
@@ -173,12 +209,12 @@ public class ExcelWriter {
 			return this;
 		}
 
-		public void write() {
-			try (FileOutputStream fos = new FileOutputStream("/temp/test.xlsx")) {
-				this.writer.workbook.write(fos);
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
+		public ExcelWriter build() {
+			return this.writer;
+		}
+
+		public void write(OutputStream os) throws IOException {
+			this.writer.workbook.write(os);
 		}
 
 	}

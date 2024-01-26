@@ -1,5 +1,6 @@
 package my.example.excel;
 
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -180,76 +181,64 @@ public class ExcelTest {
 
 					return List.of(dollarSum, wonSum, wonVatSum, companyDistribution, companyDistributionVat);
 				})
-				.write();
+				.write(new FileOutputStream("/temp/test.xlsx"));
 	}
 
 	private static ExcelConfig getExcelConfig() {
 		String dollarFormat = "$ #,##0.000";
 		String wonFormat = "\\￦ #,##0";
-		ExcelStyle textStyle = ExcelStyle.builder()
-				.styleName("Text")
+		ExcelStyle textStyle = ExcelStyle.builder("Text")
 				.borders(List.of(ExcelBorder.ALL))
 				.build();
-		ExcelStyle headerStyle = ExcelStyle.builder()
-				.styleName("Header")
+		ExcelStyle headerStyle = ExcelStyle.builder("Header")
 				.backgroundColor(IndexedColors.GREY_25_PERCENT.index)
 				.boldFont(true)
 				.align(HorizontalAlignment.CENTER)
 				.borders(List.of(ExcelBorder.ALL))
 				.build();
-		ExcelStyle amountStyle = ExcelStyle.builder()
-				.styleName("Amount")
+		ExcelStyle amountStyle = ExcelStyle.builder("Amount")
 				.align(HorizontalAlignment.RIGHT)
 				.cellFormat(dollarFormat)
 				.borders(List.of(ExcelBorder.ALL))
 				.build();
-		ExcelStyle usageStyle = ExcelStyle.builder()
-				.styleName("Usage")
+		ExcelStyle usageStyle = ExcelStyle.builder("Usage")
 				.backgroundColor(IndexedColors.TAN.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.build();
-		ExcelStyle usageAmountStyle = ExcelStyle.builder()
-				.styleName("UsageAmount")
+		ExcelStyle usageAmountStyle = ExcelStyle.builder("UsageAmount")
 				.backgroundColor(IndexedColors.TAN.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.cellFormat(dollarFormat)
 				.build();
-		ExcelStyle supportStyle = ExcelStyle.builder()
-				.styleName("Support")
+		ExcelStyle supportStyle = ExcelStyle.builder("Support")
 				.backgroundColor(IndexedColors.LIGHT_YELLOW.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.build();
-		ExcelStyle supportAmountStyle = ExcelStyle.builder()
-				.styleName("SupportAmount")
+		ExcelStyle supportAmountStyle = ExcelStyle.builder("SupportAmount")
 				.backgroundColor(IndexedColors.LIGHT_YELLOW.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.cellFormat(dollarFormat)
 				.build();
-		ExcelStyle sumTextStyle = ExcelStyle.builder()
-				.styleName("SumText")
+		ExcelStyle sumTextStyle = ExcelStyle.builder("SumText")
 				.backgroundColor(IndexedColors.GREY_25_PERCENT.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.build();
-		ExcelStyle sumAmountStyle = ExcelStyle.builder()
-				.styleName("SumAmount")
+		ExcelStyle sumAmountStyle = ExcelStyle.builder("SumAmount")
 				.backgroundColor(IndexedColors.GREY_25_PERCENT.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.cellFormat(dollarFormat)
 				.build();
-		ExcelStyle sumWonAmountStyle = ExcelStyle.builder()
-				.styleName("SumWonAmount")
+		ExcelStyle sumWonAmountStyle = ExcelStyle.builder("SumWonAmount")
 				.backgroundColor(IndexedColors.GREY_25_PERCENT.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.cellFormat(wonFormat)
 				.build();
-		ExcelStyle highSumWonAmountStyle = ExcelStyle.builder()
-				.styleName("HighSumWonAmount")
+		ExcelStyle highSumWonAmountStyle = ExcelStyle.builder("HighSumWonAmount")
 				.backgroundColor(IndexedColors.YELLOW.index)
 				.borders(List.of(ExcelBorder.ALL))
 				.cellFormat(wonFormat)
 				.build();
-		ExcelStyle percentStyle = ExcelStyle.builder()
-				.styleName("Percent")
+		ExcelStyle percentStyle = ExcelStyle.builder("Percent")
 				.borders(List.of(ExcelBorder.ALL))
 				.cellFormat("#.0#%")
 				.align(HorizontalAlignment.RIGHT)

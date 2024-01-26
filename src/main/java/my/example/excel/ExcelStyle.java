@@ -4,9 +4,6 @@ import static my.example.excel.ExcelBorder.*;
 
 import java.util.List;
 
-import org.springframework.util.Assert;
-
-import lombok.Builder;
 import lombok.Getter;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.CellStyle;
@@ -21,26 +18,84 @@ import org.apache.poi.ss.usermodel.Workbook;
 public class ExcelStyle {
 	private final String styleName;
 
-	private final boolean boldFont;
+	private boolean boldFont;
 
-	private final Short backgroundColor;
+	private Short backgroundColor;
 
-	private final HorizontalAlignment align;
+	private HorizontalAlignment align;
 
-	private final List<ExcelBorder> borders;
+	private List<ExcelBorder> borders;
 
-	private final String cellFormat;
+	private String cellFormat;
 
-	@Builder
-	public ExcelStyle(String styleName, Boolean boldFont, Short backgroundColor, HorizontalAlignment align, List<ExcelBorder> borders,
-	                  String cellFormat) {
-		Assert.notNull(styleName, "스타일 명을 지정 해 줘야 합니다.");
+	private Short fontSize;
+
+	private String fontName;
+
+	public ExcelStyle(String styleName) {
 		this.styleName = styleName;
-		this.boldFont = boldFont;
-		this.backgroundColor = backgroundColor;
-		this.align = align;
-		this.borders = borders;
-		this.cellFormat = cellFormat;
+	}
+
+	public static Builder builder(String styleName) {
+		return new Builder(new ExcelStyle(styleName));
+	}
+	public static Builder builder(ExcelStyle parentStyle, String styleName) {
+		ExcelStyle style = new ExcelStyle(styleName);
+		style.boldFont = parentStyle.boldFont;
+		style.backgroundColor = parentStyle.backgroundColor;
+		style.align = parentStyle.align;
+		style.borders = parentStyle.borders;
+		style.cellFormat = parentStyle.cellFormat;
+		style.fontSize = parentStyle.fontSize;
+		style.fontName = parentStyle.fontName;
+		return new Builder(style);
+	}
+
+	public static class Builder {
+		private final ExcelStyle s;
+
+		public Builder(ExcelStyle s) {
+			this.s = s;
+		}
+
+		public Builder boldFont(Boolean boldFont) {
+			this.s.boldFont = boldFont;
+			return this;
+		}
+
+		public Builder backgroundColor(Short backgroundColor) {
+			this.s.backgroundColor = backgroundColor;
+			return this;
+		}
+
+		public Builder align(HorizontalAlignment align) {
+			this.s.align = align;
+			return this;
+		}
+
+		public Builder borders(List<ExcelBorder> borders) {
+			this.s.borders = borders;
+			return this;
+		}
+
+		public Builder cellFormat(String cellFormat) {
+			this.s.cellFormat = cellFormat;
+			return this;
+		}
+
+		public Builder fontSize(Integer fontSize) {
+			this.s.fontSize = fontSize.shortValue();
+			return this;
+		}
+
+		public Builder fontName(String fontName) {
+			this.s.fontName = fontName;
+			return this;
+		}
+
+		public ExcelStyle build() {
+			return this.s;
+		}
 	}
 
 	public CellStyle convert(Workbook workbook) {
@@ -82,6 +137,20 @@ public class ExcelStyle {
 		if (cellFormat != null) {
 			DataFormat dataFormat = workbook.createDataFormat();
 			style.setDataFormat(dataFormat.getFormat(cellFormat));
+		}
+
+		if (fontSize != null) {
+			if (font == null) {
+				font = workbook.createFont();
+			}
+			font.setFontHeightInPoints(fontSize);
+		}
+
+		if (fontName != null) {
+			if (font == null) {
+				font = workbook.createFont();
+			}
+			font.setFontName(fontName);
 		}
 
 		style.setFont(font);

@@ -15,6 +15,7 @@ import org.apache.poi.ss.usermodel.Workbook;
 @NoArgsConstructor
 public class ExcelConfig {
 	private final List<ExcelStyle> styles = new ArrayList<>();
+	private String fileName = "excel";
 	private int chunkSize = 1000;
 	private int[] widths = {};
 
@@ -26,6 +27,11 @@ public class ExcelConfig {
 		private ExcelConfig c;
 		public Builder(ExcelConfig c) {
 			this.c = c;
+		}
+
+		public Builder fileName(String fileName) {
+			c.fileName = fileName;
+			return this;
 		}
 
 		public Builder styles(ExcelStyle... styles) {
@@ -40,6 +46,15 @@ public class ExcelConfig {
 
 		public Builder widths(int... widths) {
 			c.widths = widths;
+			return this;
+		}
+
+		public Builder widths(List<Integer> widths) {
+			int[] widthArr = new int[widths.size()];
+			for (int i=0 ; i<widths.size() ; i++) {
+				widthArr[i] = widths.get(i);
+			}
+			this.c.widths = widthArr;
 			return this;
 		}
 
