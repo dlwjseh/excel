@@ -13,19 +13,18 @@ import org.apache.poi.ss.usermodel.Workbook;
 
 @Getter
 @NoArgsConstructor
-public class ExcelConfig {
+public class WorkbookConfig {
 	private final List<ExcelStyle> styles = new ArrayList<>();
 	private String fileName = "excel";
 	private int chunkSize = 1000;
-	private int[] widths = {};
 
-	public static ExcelConfig.Builder builder() {
-		return new Builder(new ExcelConfig());
+	public static WorkbookConfig.Builder builder() {
+		return new Builder(new WorkbookConfig());
 	}
 
 	public static class Builder {
-		private ExcelConfig c;
-		public Builder(ExcelConfig c) {
+		private WorkbookConfig c;
+		public Builder(WorkbookConfig c) {
 			this.c = c;
 		}
 
@@ -44,21 +43,7 @@ public class ExcelConfig {
 			return this;
 		}
 
-		public Builder widths(int... widths) {
-			c.widths = widths;
-			return this;
-		}
-
-		public Builder widths(List<Integer> widths) {
-			int[] widthArr = new int[widths.size()];
-			for (int i=0 ; i<widths.size() ; i++) {
-				widthArr[i] = widths.get(i);
-			}
-			this.c.widths = widthArr;
-			return this;
-		}
-
-		public ExcelConfig build() {
+		public WorkbookConfig build() {
 			return this.c;
 		}
 

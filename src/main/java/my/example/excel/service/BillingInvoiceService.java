@@ -6,22 +6,30 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import my.example.excel.ExcelBorder;
 import my.example.excel.ExcelCell;
-import my.example.excel.ExcelConfig;
+import my.example.excel.ExcelSheetWriter;
 import my.example.excel.ExcelStyle;
 import my.example.excel.ExcelWriter;
+import my.example.excel.WorkbookConfig;
+import my.example.excel.domain.Business;
+import my.example.excel.domain.Partner;
+import my.example.excel.repository.BusinessRepository;
+import my.example.excel.repository.PartnerRepository;
 import org.apache.commons.codec.binary.StringUtils;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.IndexedColors;
@@ -32,6 +40,8 @@ import org.apache.poi.ss.usermodel.IndexedColors;
 public class BillingInvoiceService {
 	private final DataService dataService;
 	private final NamedParameterJdbcTemplate jdbcTemplate;
+	private final PartnerRepository partnerRepository;
+	private final BusinessRepository businessRepository;
 
 	// 엑셀 스타일
 	private final String HEADER = "Header";
@@ -47,8 +57,40 @@ public class BillingInvoiceService {
 	private final String SUPPORT_AMOUNT = "SupportAmount";
 	private final String PERCENT = "Percent";
 
+	public ExcelWriter generateAllCspInvoiceExcel(Long businessId, String ym, String invoiceLevel) {
+		ExcelWriter writer = new ExcelWriter(getExcelConfig("test"));
+		List<Long> partnerIds = List.of(1L, 2L, 4L, 5L, 7L, 8L, 9L);
+		Business business = businessRepository.findById(businessId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+		final String businessName = business.getBusinessName();
+		Function<Partner, String> getSheetName = partner -> partner.getPartnerName() + "_" + businessName;
+
+		for (Long partnerId : partnerIds) {
+			Partner partner = partnerRepository.findById(partnerId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+
+			if (businessId.equals(26L)) {
+				writer.addSheet(getSheetName.apply(partner) + "(공통)",
+						w -> this.write(w, partnerId, businessId, ym, invoiceLevel, InvoiceConst.INVOICE_ITEM_CM0));
+				writer.addSheet(getSheetName.apply(partner) + "(ONE)",
+						w -> this.write(w, partnerId, businessId, ym, invoiceLevel, InvoiceConst.INVOICE_ITEM_ONE));
+			} else {
+//				rawData = invoiceService.getFccRawData(partnerId, businessId, ym, invoiceLevel, InvoiceConst.INVOICE_ITEM_CM0);
+//				rawData.setTitle(rawData.getTitle() + "(공통)");
+//				list.add(rawData);
+			}
+		}
+
+		return writer;
+	}
+
 	@Transactional(readOnly = true)
 	public ExcelWriter getWriter(Long partnerId, Long businessId, String ym, String invoiceLevel, String invoiceItem) {
+		ExcelWriter writer = new ExcelWriter(getExcelConfig("test"));
+		writer.addSheet("sheet1", w -> this.write(w, partnerId, businessId, ym, invoiceLevel, invoiceItem));
+		return writer;
+	}
+
+	public void write(ExcelSheetWriter writer, Long partnerId, Long businessId, String ym, String invoiceLevel,
+	                                  String invoiceItem) {
 		MapSqlParameterSource params = new MapSqlParameterSource();
 		params.addValue("partnerId", partnerId);
 		params.addValue("businessId", businessId);
@@ -78,107 +120,124 @@ public class BillingInvoiceService {
 		SqlRowSet rs = jdbcTemplate.queryForRowSet(invoiceqry, Map.of());
 		SqlRowSetMetaData metaData = rs.getMetaData();
 
-		// accountMap과 rs로 Excel 그리기 시작
-		ExcelConfig config = getExcelConfig("테스트", metaData.getColumnNames());
-		return ExcelWriter.builder(config)
-				// Header
-				.addRows(accountMap, metaData, (accMap, meta) -> {
-					// 1번쨰 헤더
-					List<ExcelCell> h1 = new ArrayList<>();
-					h1.add(new ExcelCell("Group", 1, 2, HEADER));
-
-					// 프로젝트명이 같으면 col colSize를 하나씩 늘린다.
-					// 다르면 이전 프로젝트명을 cell로 생성하고 현재 프로젝트명으로 변경, colSize 초기화
-					String projectName = null;
-					int colSize = 0;
-					for (String columnName : meta.getColumnNames()) {
-						String name = columnName.replaceAll("'", "");
-						if (!name.chars().allMatch(Character::isDigit)) { // 계정컬럼인지 체크
-							continue;
-						}
-
-						if (accMap.get(name).equals(projectName)) {
-							colSize++;
-							continue;
-						}
-						if (colSize != 0) {
-							h1.add(new ExcelCell(projectName, 1, colSize, HEADER));
-						}
-						projectName = accMap.get(name);
-						colSize = 1;
-					}
-					h1.add(new ExcelCell(projectName, 1, colSize, HEADER));
-					h1.add(new ExcelCell("Total", 2, 1, HEADER));
-
-					// 2번쨰 헤더
-					List<String> ignoreFields = List.of("ITEMTYPE", "DISPLAYORDER", "BIZTOTAL");
-					List<ExcelCell> h2 = Arrays.stream(meta.getColumnNames())
-							.map(name -> name.replaceAll("'", ""))
-							.filter(name -> !ignoreFields.contains(name))
-							.map(name -> new ExcelCell(name, HEADER))
-							.collect(Collectors.toList());
-					return List.of(h1, h2);
-				})
-				// Body
-				.addRows(rs, metaData, (r, meta) -> {
-					List<List<ExcelCell>> rows = new ArrayList<>();
-					List<ExcelCell> row;
-					int columnCount = meta.getColumnCount();
-					BigDecimal usageTotCost = BigDecimal.ZERO;
-
-					while (r.next()) {
-						row = new ArrayList<>();
-						// PRODUCTCODE
-						String code = rs.getString(2);
-						row.add(new ExcelCell(LABEL_MAP.getOrDefault(code, code), getLabelCellStyle(code)));
-
-						// CATEGORY
-						if (StringUtils.equals(code, "AWS Usage")) { // Usage 값 구하기
-							usageTotCost = rs.getBigDecimal(columnCount);
-						}
-
-						Object categoryValue;
-						if ("Currency(Won)".equals(code)) {
-							categoryValue = r.getDouble(3);
-						} else if ("AWS Support".equals(r.getString(3))) {
-							BigDecimal esTotCost = rs.getBigDecimal(columnCount) != null ? rs.getBigDecimal(columnCount) : BigDecimal.ZERO;
-							String result = "";
-
-							if (BigDecimal.ZERO.compareTo(usageTotCost) != 0 && esTotCost != null) {
-								result = String.format("%.2f", esTotCost.divide(usageTotCost, 9, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)));
-							}
-
-							categoryValue = "Enterprise Supports(Usage의 " + result + "%)";
-						} else {
-							categoryValue = r.getString(3);
-						}
-						row.add(new ExcelCell(categoryValue, getCategoryCellStyle(code, r.getString(3))));
-
-						// VALUES
-						for (int i=5 ; i<columnCount ; i++) {
-							double value = r.getString(i) == null ? 0.0 : r.getDouble(i);
-							row.add(new ExcelCell(value, getValueCellStyle(code)));
-						}
-
-						// TOTAL
-						row.add(new ExcelCell(r.getDouble(columnCount), getTotalCellStyle(code)));
-
-						rows.add(row);
-					}
-					return rows;
-				})
-				.build();
-	}
-
-	private ExcelConfig getExcelConfig(String fileName, String[] columnNames) {
-		List<Integer> accountWidths = Arrays.stream(columnNames)
+		List<Integer> accountWidths = Arrays.stream(metaData.getColumnNames())
 				.map(name -> name.replaceAll("'", ""))
 				.filter(name -> name.chars().allMatch(Character::isDigit))
 				.map(n -> 18)
 				.collect(Collectors.toList());
 		List<Integer> widths = new ArrayList<>(List.of(25, 45, 18));
 		widths.addAll(2, accountWidths);
+		writer.setWidths(widths);
+		// HEADER
+		writer.addRows(accountMap, metaData, (accMap, meta) -> {
+			// 1번쨰 헤더
+			List<ExcelCell> h1 = new ArrayList<>();
+			h1.add(new ExcelCell("Group", 1, 2, HEADER));
 
+			// 프로젝트명이 같으면 col colSize를 하나씩 늘린다.
+			// 다르면 이전 프로젝트명을 cell로 생성하고 현재 프로젝트명으로 변경, colSize 초기화
+			String projectName = null;
+			int colSize = 0;
+			for (String columnName : meta.getColumnNames()) {
+				String name = columnName.replaceAll("'", "");
+				if (!name.chars().allMatch(Character::isDigit)) { // 계정컬럼인지 체크
+					continue;
+				}
+
+				if (accMap.get(name).equals(projectName)) {
+					colSize++;
+					continue;
+				}
+				if (colSize != 0) {
+					h1.add(new ExcelCell(projectName, 1, colSize, HEADER));
+				}
+				projectName = accMap.get(name);
+				colSize = 1;
+			}
+			h1.add(new ExcelCell(projectName, 1, colSize, HEADER));
+			h1.add(new ExcelCell("Total", 2, 1, HEADER));
+
+			// 2번쨰 헤더
+			List<String> ignoreFields = List.of("ITEMTYPE", "DISPLAYORDER", "BIZTOTAL");
+			List<ExcelCell> h2 = Arrays.stream(meta.getColumnNames())
+					.map(name -> name.replaceAll("'", ""))
+					.filter(name -> !ignoreFields.contains(name))
+					.map(name -> new ExcelCell(name, HEADER))
+					.collect(Collectors.toList());
+			return List.of(h1, h2);
+		});
+		writer.addRows(rs, metaData, (r, meta) -> {
+			List<List<ExcelCell>> rows = new ArrayList<>();
+			List<ExcelCell> row;
+			int columnCount = meta.getColumnCount();
+			BigDecimal usageTotCost = BigDecimal.ZERO;
+
+			while (r.next()) {
+				row = new ArrayList<>();
+				// PRODUCTCODE
+				String code = rs.getString(2);
+				row.add(new ExcelCell(LABEL_MAP.getOrDefault(code, code), getLabelCellStyle(code)));
+
+				// CATEGORY
+				if (StringUtils.equals(code, "AWS Usage")) { // Usage 값 구하기
+					usageTotCost = rs.getBigDecimal(columnCount);
+				}
+
+				Object categoryValue;
+				if ("Currency(Won)".equals(code)) {
+					categoryValue = r.getDouble(3);
+				} else if ("AWS Support".equals(r.getString(3))) {
+					BigDecimal esTotCost = rs.getBigDecimal(columnCount) != null ? rs.getBigDecimal(columnCount) : BigDecimal.ZERO;
+					String result = "";
+
+					if (BigDecimal.ZERO.compareTo(usageTotCost) != 0 && esTotCost != null) {
+						result = String.format("%.2f", esTotCost.divide(usageTotCost, 9, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)));
+					}
+
+					categoryValue = "Enterprise Supports(Usage의 " + result + "%)";
+				} else {
+					categoryValue = r.getString(3);
+				}
+				row.add(new ExcelCell(categoryValue, getCategoryCellStyle(code, r.getString(3))));
+
+				// VALUES
+				for (int i=5 ; i<columnCount ; i++) {
+					double value = r.getString(i) == null ? 0.0 : r.getDouble(i);
+					row.add(new ExcelCell(value, getValueCellStyle(code)));
+				}
+
+				// TOTAL
+				row.add(new ExcelCell(r.getDouble(columnCount), getTotalCellStyle(code)));
+
+				rows.add(row);
+			}
+			return rows;
+		});
+
+		// 계열사별 배분금액
+		Map<String, Object> distRateResult = dataService.selectOne("BILLING_INVOICE_DETAIL_DISTRIBUTION_RATE_MOD", params);
+		BigDecimal distRate = getBigDecimal(distRateResult, "DISTRIBUTIONRATE", BigDecimal.ZERO).divide(BigDecimal.valueOf(100));
+		if (distRate.compareTo(BigDecimal.valueOf(1L)) != 0) {
+			BigDecimal distRateTotalCost = getBigDecimal(distRateResult, "PARTNERTOTALCOST", BigDecimal.ZERO);
+			BigDecimal distRateTaxTotalCost = getBigDecimal(distRateResult, "MODPARTNERTAXTOTALCOST", BigDecimal.ZERO);
+
+			String modCostMessage = buildModCostMessage(distRateResult);
+
+			writer.addRow(List.of(
+					new ExcelCell("계열사별 배분금액(￦/VAT별도)", SUM_COMMON),
+					new ExcelCell("", SUM_COMMON),
+					new ExcelCell(distRate.doubleValue(), 2, accountMap.size(), PERCENT),
+					new ExcelCell(distRateTaxTotalCost.intValue(), SUM_HIGHLIGHT_WON_AMOUNT)
+			));
+			writer.addRow(List.of(
+					new ExcelCell("계열사별 배분금액(￦/VAT포함)", SUM_COMMON),
+					new ExcelCell(modCostMessage, SUM_COMMON),
+					new ExcelCell(distRateTotalCost.intValue(), SUM_HIGHLIGHT_WON_AMOUNT)
+			));
+		}
+	}
+
+	private WorkbookConfig getExcelConfig(String fileName) {
 		String dollarFormat = "$ #,##0.000";
 		String wonFormat = "\\￦ #,##0";
 		ExcelStyle commonStyle = ExcelStyle.builder(COMMON)
@@ -223,15 +282,14 @@ public class BillingInvoiceService {
 				.cellFormat(wonFormat)
 				.build();
 		ExcelStyle percentStyle = ExcelStyle.builder(commonStyle, PERCENT)
-				.cellFormat("#.0#%")
+				.cellFormat("0.0#%")
 				.align(HorizontalAlignment.RIGHT)
 				.build();
-		return ExcelConfig.builder()
+		return WorkbookConfig.builder()
 				.fileName(fileName)
 				.styles(commonStyle, headerStyle, amountStyle, usageStyle, usageAmountStyle, supportStyle,
 						supportAmountStyle, sumCommonStyle, sumAmountStyle, sumWonAmountStyle, highSumWonAmountStyle,
 						percentStyle)
-				.widths(widths)
 				.build();
 	}
 
@@ -283,5 +341,39 @@ public class BillingInvoiceService {
 			"Currency(Won)", SUM_HIGHLIGHT_WON_AMOUNT,
 			"Total (incl VAT)", SUM_HIGHLIGHT_WON_AMOUNT
 	);
+
+	private String buildModCostMessage(Map<String, Object> map) {
+		BigDecimal totalMod = getBigDecimal(map, "MODCOST", BigDecimal.ZERO);
+		BigDecimal applyMod = getBigDecimal(map, "MODDONECOST", BigDecimal.ZERO);
+		if (!BigDecimal.ZERO.equals(applyMod)) {
+			return String.format("보정금액 총 %d원중 %d원", totalMod.longValue(), applyMod.longValue());
+		}
+		return "";
+	}
+
+	public BigDecimal getBigDecimal(Map<String, Object> map, String key, BigDecimal defaultValue) {
+		Object o = map.get(key);
+		try {
+			if (o == null) return defaultValue;
+			if (o instanceof BigDecimal) {
+				return (BigDecimal) o;
+			}
+			if (o instanceof Integer) {
+				return BigDecimal.valueOf((Integer) o);
+			}
+			if (o instanceof Long) {
+				return BigDecimal.valueOf((Long) o);
+			}
+			if (o instanceof Float) {
+				return BigDecimal.valueOf((Float) o);
+			}
+			if (o instanceof Double) {
+				return BigDecimal.valueOf((Double) o);
+			}
+		} catch (Exception e) {
+			// do nothing
+		}
+		return defaultValue;
+	}
 
 }
